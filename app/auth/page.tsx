@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabase";
 
-export default function AuthPage() {
+// ─────────────────────────────────────────
+// Inner component — uses useSearchParams
+// Must be wrapped in Suspense (Next.js 15 requirement)
+// ─────────────────────────────────────────
+function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // URL 파라미터로 초기 모드 결정 (?mode=signup이면 회원가입으로 시작)
   const initialMode =
     searchParams.get("mode") === "signup" ? "signup" : "signin";
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
@@ -25,15 +28,12 @@ export default function AuthPage() {
     setStatus("loading");
     setErrorMsg("");
 
-    console.log("handleSubmit 시작, mode:", mode);
-
     if (mode === "signup") {
       const { error } = await supabaseClient.auth.signUp({ email, password });
       if (error) {
         setErrorMsg(error.message);
         setStatus("error");
       } else {
-        // 이메일 인증 요청 완료 상태로 전환
         setStatus("verify");
       }
     } else {
@@ -54,12 +54,11 @@ export default function AuthPage() {
     if (e.key === "Enter") handleSubmit();
   };
 
-  // 이메일 인증 요청 완료 화면
   if (status === "verify") {
     return (
       <main className="max-w-sm mx-auto mt-32 px-4 text-center">
         <h1 className="text-xl font-semibold mb-3">Check your email</h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-600">
           We sent a confirmation link to <strong>{email}</strong>. Please verify
           your email before signing in.
         </p>
@@ -69,8 +68,8 @@ export default function AuthPage() {
 
   return (
     <main className="max-w-sm mx-auto mt-32 px-4">
-      <h1 className="text-2xl font-semibold mb-1">DocChat</h1>
-      <p className="text-sm text-gray-400 mb-8">
+      <h1 className="text-2xl font-semibold mb-1">ClauseCheck AI</h1>
+      <p className="text-sm text-gray-500 mb-8">
         {mode === "signin" ? "Sign in to your account" : "Create a new account"}
       </p>
 
@@ -109,7 +108,6 @@ export default function AuthPage() {
         </button>
       </div>
 
-      {/* 로그인/회원가입 모드 전환 */}
       <p className="text-sm text-center text-gray-400 mt-6">
         {mode === "signin"
           ? "Don't have an account?"
@@ -126,5 +124,23 @@ export default function AuthPage() {
         </button>
       </p>
     </main>
+  );
+}
+
+// ─────────────────────────────────────────
+// Page export — wraps AuthForm in Suspense
+// Required by Next.js 15 for useSearchParams
+// ─────────────────────────────────────────
+export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="max-w-sm mx-auto mt-32 px-4 text-center">
+          <p className="text-sm text-gray-400">Loading...</p>
+        </main>
+      }
+    >
+      <AuthForm />
+    </Suspense>
   );
 }

@@ -7,7 +7,7 @@ import supabaseAdmin from "@/lib/supabaseAdmin";
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { docId: string } }
+  { params }: { params: Promise<{ docId: string }> }
 ) {
   // 1. Auth check
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -20,7 +20,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const { docId } = params;
+  // Next.js 15+: params is a Promise — must be awaited
+  const { docId } = await params;
+
   if (!docId) {
     return NextResponse.json({ error: "docId is required." }, { status: 400 });
   }
@@ -41,7 +43,6 @@ export async function DELETE(
   }
 
   // 3. Delete vectors from Pinecone
-  // Build vector IDs: format is `${docId}#${chunkIndex}`
   try {
     const chunkCount = doc.chunk_count as number;
     const vectorIds = Array.from(
@@ -55,13 +56,11 @@ export async function DELETE(
       await nsIndex.deleteMany(vectorIds);
       console.log(`Deleted ${vectorIds.length} vectors from namespace ${user.id}`);
     } catch {
-      // Fallback: delete from default index using docId filter
       await index.deleteMany(vectorIds);
       console.log(`Deleted ${vectorIds.length} vectors from default index`);
     }
   } catch (e) {
     console.error("Pinecone delete error:", e);
-    // Non-fatal: continue to return success so Supabase delete still proceeds
     return NextResponse.json(
       {
         warning: "Document metadata will be deleted but vector cleanup failed. Orphaned vectors may remain.",

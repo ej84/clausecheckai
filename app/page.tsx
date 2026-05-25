@@ -4,7 +4,7 @@ import Navbar from "@/components/Navbar";
 
 // ── Replace these with your actual contact info ──────────────────
 const CONTACT_EMAIL = "jmw9871@gmail.com"; // ← 이메일 주소 입력
-const X_HANDLE = "yourhandle"; // ← X(트위터) 핸들 (@제외)
+const X_HANDLE = "DreamyDesignerX"; // ← X(트위터) 핸들 (@제외)
 const X_URL = `https://x.com/${X_HANDLE}`;
 // ────────────────────────────────────────────────────────────────
 
