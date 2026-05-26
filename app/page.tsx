@@ -75,6 +75,12 @@ export default function LandingPage() {
           ))}
         </div>
 
+        <p className="text-base text-red-500 mb-3">
+          Caution: ClauseCheck AI provides general contract information only and
+          does not constitute legal advice. For important legal matters, please
+          consult a qualified attorney.
+        </p>
+
         {/* Supported formats */}
         <p className="text-xs text-gray-500">
           Supports PDF · DOCX · TXT · up to 10MB

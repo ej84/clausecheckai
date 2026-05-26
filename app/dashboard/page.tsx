@@ -263,6 +263,14 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      <div className="p-5 mb-3 text-center">
+        <p className="text-sm md:text-base text-red-500">
+          Caution: ClauseCheck AI provides general contract information only and
+          does not constitute legal advice. For important legal matters, please
+          consult a qualified attorney.
+        </p>
+      </div>
     </main>
   );
 }
