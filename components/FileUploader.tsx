@@ -1,6 +1,7 @@
 "use client";
 
 // components/FileUploader.tsx
+// v2 — adds contract type selection for per-type risk calibration
 
 import { useState, useRef, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabase";
@@ -11,18 +12,81 @@ import { supabaseClient } from "@/lib/supabase";
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 type RiskLevel = "high" | "medium" | "low" | "unknown";
 
-interface UploadResult {
+export type ContractType =
+  | "employment"
+  | "nda"
+  | "saas"
+  | "freelance"
+  | "partnership"
+  | "lease"
+  | "general";
+
+export interface UploadResult {
   docId: string;
   overallRisk: RiskLevel;
   highRiskSections: string[];
   mediumRiskSections: string[];
   detectedLanguage: string;
   chunkCount: number;
+  contractType: ContractType;
 }
 
 interface FileUploaderProps {
   onUploadComplete: (docId: string, result: UploadResult) => void;
 }
+
+// ─────────────────────────────────────────
+// Contract type options
+// ─────────────────────────────────────────
+export const CONTRACT_TYPE_OPTIONS: {
+  value: ContractType;
+  label: string;
+  description: string;
+  icon: string;
+}[] = [
+  {
+    value: "general",
+    label: "Not sure / General",
+    description: "Auto-detect contract type",
+    icon: "📄",
+  },
+  {
+    value: "employment",
+    label: "Employment Contract",
+    description: "Job offer, work agreement",
+    icon: "💼",
+  },
+  {
+    value: "nda",
+    label: "NDA / Confidentiality",
+    description: "Non-disclosure agreement",
+    icon: "🔒",
+  },
+  {
+    value: "saas",
+    label: "SaaS / Software",
+    description: "Software license, terms of service",
+    icon: "💻",
+  },
+  {
+    value: "freelance",
+    label: "Freelance / Service",
+    description: "Independent contractor, service agreement",
+    icon: "🤝",
+  },
+  {
+    value: "partnership",
+    label: "Partnership / Equity",
+    description: "Business partnership, shareholder agreement",
+    icon: "🏢",
+  },
+  {
+    value: "lease",
+    label: "Lease / Rental",
+    description: "Property or equipment lease",
+    icon: "🏠",
+  },
+];
 
 // ─────────────────────────────────────────
 // Constants
@@ -81,15 +145,12 @@ function validateFile(file: File): string | null {
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return `File size exceeds ${MAX_FILE_SIZE_MB}MB. (Current: ${(file.size / 1024 / 1024).toFixed(1)}MB)`;
   }
-
   const name = file.name.toLowerCase();
   const hasValidExt = ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
   const hasValidMime = ALLOWED_MIME_TYPES.includes(file.type);
-
   if (!hasValidExt && !hasValidMime) {
     return "Only PDF, TXT, and DOCX files are allowed.";
   }
-
   return null;
 }
 
@@ -103,11 +164,17 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [contractType, setContractType] = useState<ContractType>("general");
+  const [showTypeSelector, setShowTypeSelector] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── Upload handler ───────────────────────
+  const selectedOption = CONTRACT_TYPE_OPTIONS.find(
+    (o) => o.value === contractType,
+  )!;
+
+  // ── Upload ───────────────────────────────
   const processFile = useCallback(
     async (file: File) => {
       const validationError = validateFile(file);
@@ -135,6 +202,7 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("contractType", contractType);
 
         const res = await fetch("/api/upload", {
           method: "POST",
@@ -147,8 +215,7 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          const msg = body?.error ?? `Upload failed (HTTP ${res.status})`;
-          throw new Error(msg);
+          throw new Error(body?.error ?? `Upload failed (HTTP ${res.status})`);
         }
 
         const result: UploadResult = await res.json();
@@ -171,27 +238,23 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
         abortControllerRef.current = null;
       }
     },
-    [onUploadComplete],
+    [onUploadComplete, contractType],
   );
 
-  // ── Input onChange ───────────────────────
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
     e.target.value = "";
   };
 
-  // ── Drag and drop ────────────────────────
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -199,12 +262,7 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
     if (file) processFile(file);
   };
 
-  // ── Cancel ───────────────────────────────
-  const handleCancel = () => {
-    abortControllerRef.current?.abort();
-  };
-
-  // ── Retry ────────────────────────────────
+  const handleCancel = () => abortControllerRef.current?.abort();
   const handleRetry = () => {
     setStatus("idle");
     setErrorMessage("");
@@ -212,16 +270,75 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
     inputRef.current?.click();
   };
 
-  // ─────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────
   const riskConfig = uploadResult
     ? RISK_CONFIG[uploadResult.overallRisk]
     : null;
 
+  // ─────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────
   return (
-    <div className="w-full space-y-4">
-      {/* Drop zone */}
+    <div className="w-full space-y-3">
+      {/* ── Contract Type Selector ── */}
+      {status === "idle" && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-600">Contract type</p>
+
+          {/* Selected type button */}
+          <button
+            onClick={() => setShowTypeSelector(!showTypeSelector)}
+            className="w-full flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 text-sm hover:border-gray-300 transition-colors bg-white"
+          >
+            <span className="flex items-center gap-2">
+              <span>{selectedOption.icon}</span>
+              <span className="font-medium text-gray-800">
+                {selectedOption.label}
+              </span>
+              <span className="text-gray-400 text-xs hidden sm:inline">
+                — {selectedOption.description}
+              </span>
+            </span>
+            <span className="text-gray-400 text-xs">
+              {showTypeSelector ? "▲" : "▼"}
+            </span>
+          </button>
+
+          {/* Dropdown */}
+          {showTypeSelector && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+              {CONTRACT_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    setContractType(option.value);
+                    setShowTypeSelector(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${
+                    contractType === option.value ? "bg-gray-50" : ""
+                  }`}
+                >
+                  <span className="text-base">{option.icon}</span>
+                  <div>
+                    <p
+                      className={`font-medium ${contractType === option.value ? "text-black" : "text-gray-700"}`}
+                    >
+                      {option.label}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {option.description}
+                    </p>
+                  </div>
+                  {contractType === option.value && (
+                    <span className="ml-auto text-black text-xs">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Drop Zone ── */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -249,7 +366,6 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
           disabled={status === "uploading"}
         />
 
-        {/* Icon */}
         <div className="text-3xl mb-2">
           {status === "uploading"
             ? "⏳"
@@ -257,14 +373,13 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
               ? "✅"
               : status === "error"
                 ? "❌"
-                : "📄"}
+                : selectedOption.icon}
         </div>
 
-        {/* Status messages */}
         {status === "idle" && (
           <>
             <p className="text-gray-600 font-medium mb-1">
-              Upload your contract
+              Upload your {selectedOption.label.toLowerCase()}
             </p>
             <p className="text-gray-400 text-xs mb-4">
               PDF, DOCX, TXT · Max {MAX_FILE_SIZE_MB}MB · Drag & drop or click
@@ -288,7 +403,7 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
               />
             </div>
             <p className="text-gray-400 text-xs">
-              Analyzing contract... please wait
+              Analyzing {selectedOption.label.toLowerCase()}... please wait
             </p>
             <button
               onClick={handleCancel}
@@ -327,12 +442,11 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
         )}
       </div>
 
-      {/* Risk banner — shown after upload completes */}
+      {/* ── Risk Banner ── */}
       {status === "done" && uploadResult && riskConfig && (
         <div
           className={`rounded-xl border p-4 ${riskConfig.bg} ${riskConfig.border}`}
         >
-          {/* Header */}
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg">{riskConfig.emoji}</span>
             <span className={`font-semibold text-sm ${riskConfig.text}`}>
@@ -343,7 +457,22 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
             </span>
           </div>
 
-          {/* HIGH RISK sections */}
+          {/* Contract type badge */}
+          <div className="mb-2">
+            <span className="text-xs bg-white border border-gray-200 rounded-full px-2 py-0.5 text-gray-600">
+              {
+                CONTRACT_TYPE_OPTIONS.find(
+                  (o) => o.value === uploadResult.contractType,
+                )?.icon
+              }{" "}
+              {
+                CONTRACT_TYPE_OPTIONS.find(
+                  (o) => o.value === uploadResult.contractType,
+                )?.label
+              }
+            </span>
+          </div>
+
           {uploadResult.highRiskSections.length > 0 && (
             <div className="mt-2">
               <p className="text-xs font-medium text-red-600 mb-1">
@@ -362,7 +491,6 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
             </div>
           )}
 
-          {/* MEDIUM RISK sections */}
           {uploadResult.mediumRiskSections.length > 0 && (
             <div className="mt-2">
               <p className="text-xs font-medium text-yellow-600 mb-1">
@@ -381,7 +509,6 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
             </div>
           )}
 
-          {/* LOW RISK */}
           {uploadResult.overallRisk === "low" && (
             <p className="text-xs text-green-600 mt-1">
               No high-risk clauses detected. Use the chat to review specific
@@ -389,9 +516,8 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
             </p>
           )}
 
-          {/* Detected language */}
           <p className="text-xs text-gray-400 mt-2">
-            Detected language:{" "}
+            Language:{" "}
             {uploadResult.detectedLanguage === "ko"
               ? "Korean"
               : uploadResult.detectedLanguage === "en"

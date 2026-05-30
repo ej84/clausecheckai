@@ -16,6 +16,27 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ClauseCheck AI",
   description: "Find risky clauses in your contracts instantly",
+  openGraph: {
+    title: "ClauseCheck AI",
+    description: "Find risky clauses in your contracts instantly.",
+    url: "https://clausecheckai.vercel.app",
+    siteName: "ClauseCheck AI",
+    images: [
+      {
+        url: "https://clausecheckai.vercel.app/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "ClauseCheck AI — Contract Risk Analysis",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ClauseCheck AI",
+    description: "Find risky clauses in your contracts instantly.",
+    images: ["https://clausecheckai.vercel.app/og-image.png"],
+  },
 };
 
 export default function RootLayout({

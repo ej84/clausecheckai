@@ -4,11 +4,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "unpdf";
 import mammoth from "mammoth";
-import { chunkText, summarizeRisk } from "@/lib/chunker";
+import { chunkText } from "@/lib/chunker";
 import { embedTexts } from "@/lib/embeddings";
 import { index } from "@/lib/pinecone";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import type { RecordMetadata } from "@pinecone-database/pinecone";
+import { type ContractType, getHighRiskKeywords, getMediumRiskKeywords } from "@/lib/contractTypes";
 
 // ─────────────────────────────────────────
 // Constants
@@ -76,6 +77,32 @@ async function upsertInBatches(
   }
 }
 
+function summarizeRiskTyped(
+  chunks: import("@/lib/chunker").TextChunk[],
+  highKeywords: string[],
+  medKeywords: string[]
+): { highRiskSections: string[]; mediumRiskSections: string[]; overallRisk: "high" | "medium" | "low" } {
+  const highRiskSections: string[] = [];
+  const mediumRiskSections: string[] = [];
+ 
+  for (const chunk of chunks) {
+    const lower = chunk.text.toLowerCase();
+    const label = chunk.sectionTitle || chunk.sectionNumber || `Chunk ${chunk.index + 1}`;
+ 
+    const hasHigh = highKeywords.some((kw) => lower.includes(kw.toLowerCase()));
+    const hasMedium = medKeywords.some((kw) => lower.includes(kw.toLowerCase()));
+ 
+    if (hasHigh) highRiskSections.push(label);
+    else if (hasMedium) mediumRiskSections.push(label);
+  }
+ 
+  const overallRisk =
+    highRiskSections.length > 0 ? "high" :
+    mediumRiskSections.length > 0 ? "medium" : "low";
+ 
+  return { highRiskSections, mediumRiskSections, overallRisk };
+}
+
 // ─────────────────────────────────────────
 // POST handler
 // ─────────────────────────────────────────
@@ -125,6 +152,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const contractType = (formData?.get("contractType") as ContractType | null) ?? "general";
+
   // 5. Extract text
   const buffer = Buffer.from(await file.arrayBuffer());
   let text = "";
@@ -163,8 +192,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { highRiskSections, mediumRiskSections, overallRisk } =
-    summarizeRisk(chunks);
+const highKeywords = getHighRiskKeywords(contractType);
+const medKeywords = getMediumRiskKeywords(contractType);
+const { highRiskSections, mediumRiskSections, overallRisk } = summarizeRiskTyped(chunks, highKeywords, medKeywords);
 
   // Detect dominant language (majority vote)
   const langCounts: Record<string, number> = { ko: 0, en: 0, mixed: 0 };
@@ -221,6 +251,7 @@ export async function POST(req: NextRequest) {
       high_risk_sections: highRiskSections,
       medium_risk_sections: mediumRiskSections,
       detected_language: detectedLanguage,
+      contract_type: contractType,
     });
 
     if (error) throw error;
@@ -242,5 +273,6 @@ export async function POST(req: NextRequest) {
     highRiskSections,
     mediumRiskSections,
     detectedLanguage,
+    contractType,
   });
 }
